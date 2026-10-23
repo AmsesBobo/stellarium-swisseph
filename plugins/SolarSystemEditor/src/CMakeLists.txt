@@ -1,3 +1,4 @@
+# Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 
 INCLUDE_DIRECTORIES(
      .
@@ -12,6 +13,11 @@ LINK_DIRECTORIES(${CMAKE_BINARY_DIR}/src)
 SET(SolarSystemEditor_SRCS
      SolarSystemEditor.hpp
      SolarSystemEditor.cpp
+     gui/SwissEphemerisInventory.hpp
+     gui/SwissEphemerisInventory.cpp
+     gui/SwissEphemerisManifest.hpp
+     gui/SwissEphemerisDownload.hpp
+     gui/SwissEphemerisDownload.cpp
      gui/SolarSystemManagerWindow.hpp
      gui/SolarSystemManagerWindow.cpp
      gui/MpcImportWindow.hpp

@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Swiss Ephemeris integration, 2026-10-23.
+# Optional external-dependency job. No automatic execution or artifact publishing.
+# Review doc/swisseph-prototype.md and upstream licensing before running/distributing.
+name: Swiss Ephemeris tests
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  swiss-linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        swiss: ['OFF', 'ON']
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ python3 git xvfb xauth \
+            qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools \
+            qt6-multimedia-dev qt6-positioning-dev qt6-webengine-dev qt6-webengine-dev-tools \
+            qt6-svg-dev qt6-qpa-plugins qt6-image-formats-plugins qt6-speech-dev \
+            libqt6charts6-dev libqt6opengl6-dev libqt6serialport6-dev \
+            libexiv2-dev libnlopt-cxx-dev zlib1g-dev libgl1-mesa-dev libdrm-dev \
+            libxkbcommon-x11-dev libmd4c-dev libmd4c-html0-dev gettext libgettextpo-dev \
+            libtidy-dev libunarr-dev
+      - name: Prepare explicit external dependency and locked fixtures
+        if: matrix.swiss == 'ON'
+        run: |
+          git init build/swiss-source
+          git -C build/swiss-source fetch --depth=1 https://github.com/aloistr/swisseph.git aacf962d19d79f8bc921dbcdaacf306d85be1917
+          git -C build/swiss-source checkout --detach FETCH_HEAD
+          python3 util/prepare_swisseph_tests.py --download
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTING=ON -DENABLE_SWISSEPH=${{ matrix.swiss }} \
+            -DSWISSEPH_SOURCE_DIR="$PWD/build/swiss-source" \
+            -DSWISSEPH_REQUIRE_TEST_DATA=${{ matrix.swiss }} \
+            -DENABLE_SWISSEPH_GUI_TESTS=${{ matrix.swiss }} \
+            -DENABLE_SHOWMYSKY=OFF -DENABLE_INDI=OFF -DENABLE_GPS=OFF -DENABLE_XLSX=OFF
+      - name: Build application and Swiss tests
+        run: cmake --build build --target stellarium buildSwissTests -j2
+      - name: Run Swiss tests
+        run: xvfb-run -a ctest --test-dir build -R '^swiss' --output-on-failure

@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Swiss Ephemeris integration, 2026-10-23.
+// Swiss individual asteroid integration test. Requires Astraea long + Eros short files.
+core.setTimeRate(0);
+core.setDeltaTAlgorithm("WithoutCorrection");
+SolarSystem.setFlagLightTravelTime(false);
+SolarSystem.setFlagOrbits(true);
+LandscapeMgr.setFlagAtmosphere(false);
+LandscapeMgr.setFlagLandscape(false);
+var cases = [{"jd": 1705425.5, "name": "(5) Astraea", "radius": 2.710217334484854}, {"jd": 2295545.5, "name": "(5) Astraea", "radius": 2.326426024592829}, {"jd": 2813135.5, "name": "(5) Astraea", "radius": 3.031717165565551}, {"jd": 2305447.5, "name": "(5) Astraea", "radius": 3.0164860568429415}, {"jd": 2305447.5, "name": "(433) Eros", "radius": 1.1331320955573356}, {"jd": 2451545, "name": "(5) Astraea", "radius": 2.2416339867870434}, {"jd": 2451545, "name": "(433) Eros", "radius": 1.3454198886835633}, {"jd": 2469807.5, "name": "(5) Astraea", "radius": 2.522312379758432}, {"jd": 2469807.5, "name": "(433) Eros", "radius": 1.7697678864461241}];
+var failures=0;
+for(var i=0;i<cases.length;++i) {
+    var c=cases[i];
+    core.setJDay(c.jd);
+    core.selectObjectByName(c.name, true);
+    core.moveToObject(c.name, 0);
+    core.wait(0.2);
+    var info=core.getObjectInfo(c.name);
+    var ok=info["position-source"]==="Swiss Ephemeris"
+        && Math.abs(info["heliocentric-distance"]-c.radius)<1e-8;
+    if(!ok) failures++;
+    core.output("SWISS_INDIVIDUAL "+JSON.stringify({name:c.name,jd:c.jd,ok:ok,
+        source:info["position-source"],file:info["ephemeris-file"],radius:info["heliocentric-distance"]}));
+}
+// Eros is unavailable in 1572; Astraea must keep using its own long file.
+core.setJDay(2295545.5);
+core.wait(0.3);
+if(core.getObjectInfo("(433) Eros")["position-source"]!=="Kepler elements") failures++;
+if(core.getObjectInfo("(5) Astraea")["position-source"]!=="Swiss Ephemeris") failures++;
+SolarSystem.setFlagLightTravelTime(true);
+// Traverse the actual lower edge of Eros' file in both directions.
+core.setJDay(2305442.4);
+core.setTimeRate(86400);
+core.wait(0.4);
+core.setTimeRate(-86400);
+core.wait(0.4);
+core.setTimeRate(0);
+core.output("SWISS_INDIVIDUAL_RESULT failures="+failures);
+core.quitStellarium();

@@ -81,3 +81,12 @@ PCH-*
 *_GZ*
 GZ_*
 *.awk
+
+# Swiss Ephemeris: external data and local profiles (2026-10-23).
+*.se1
+/user-swisseph/
+/.stellarium-swisseph/
+
+# Python helper bytecode.
+__pycache__/
+*.pyc

@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2023 Alexander Wolf
@@ -149,6 +150,15 @@ void AstroCalcAlmanacWidget::setup()
 	ui->buttonCustomMoonset->setFixedSize(button);
 }
 
+void AstroCalcAlmanacWidget::showEvent(QShowEvent* event)
+{
+	QWidget::showEvent(event);
+	// Catch up with changes received while another AstroCalc page (or the
+	// whole dialog) was hidden. setup() must have initialized the managers.
+	if (core)
+		populateData();
+}
+
 void AstroCalcAlmanacWidget::retranslate()
 {
 	ui->retranslateUi(this);
@@ -224,6 +234,10 @@ QString AstroCalcAlmanacWidget::getFormattedDateTime(const double JD, const doub
 
 void AstroCalcAlmanacWidget::setSeasonTimes()
 {
+	// These calculations can update all solar-system bodies at other dates.
+	// Hidden pages are refreshed by showEvent instead of on every date signal.
+	if (!isVisible()) return;
+
 	const double JD = core->getJD() +  core->getUTCOffset(core->getJD()) / 24.;
 	int year, month, day;
 	double jdFirstDay, jdLastDay;
@@ -262,6 +276,10 @@ void AstroCalcAlmanacWidget::setSeasonTimes()
 
 void AstroCalcAlmanacWidget::setTodayTimes()
 {
+	// These calculations can update all solar-system bodies at other dates.
+	// Hidden pages are refreshed by showEvent instead of on every date signal.
+	if (!isVisible()) return;
+
 	if (core->getCurrentPlanet()!=GETSTELMODULE(SolarSystem)->getEarth())
 		return;
 
