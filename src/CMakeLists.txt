@@ -1,5 +1,10 @@
+# Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 #add our external dependencies first
 add_subdirectory(external)
+
+IF(ENABLE_SWISSEPH)
+     INCLUDE(${PROJECT_SOURCE_DIR}/cmake/SwissEphemeris.cmake)
+ENDIF()
 
 IF(ENABLE_SPOUT)
      SET(spout_SRCS
@@ -162,6 +167,8 @@ SET(stellarium_lib_SRCS
      core/planetsephems/jpl_int.h
      core/planetsephems/jpleph.h
      core/planetsephems/jpleph.cpp
+     core/planetsephems/SwissEphemeris.cpp
+     core/planetsephems/SwissEphemeris.hpp
      core/planetsephems/EphemWrapper.cpp
      core/planetsephems/EphemWrapper.hpp
      core/planetsephems/tass17.c
@@ -564,7 +571,14 @@ IF(ENABLE_SPOUT AND SPOUT_LIBRARY_DLL)
      CONFIGURE_FILE(${SPOUT_LIBRARY_DLL} ${CMAKE_CURRENT_BINARY_DIR} COPYONLY)
 ENDIF()
 
+IF(ENABLE_SWISSEPH)
+     ADD_DEFINITIONS(-DENABLE_SWISSEPH)
+ENDIF()
+
 SET(STELMAIN_DEPS ${MD4C_STEL_LIBRARIES} ${ZLIB_LIBRARIES} glues_stel ${STELLARIUM_STATIC_PLUGINS_LIBRARIES} ${STELLARIUM_QT_LIBRARIES} ${SPOUT_LIBRARY} ${STD_EXECUTION_LIBS})
+IF(ENABLE_SWISSEPH)
+     LIST(APPEND STELMAIN_DEPS stellarium_swe)
+ENDIF()
 IF(USE_BUNDLED_QTCOMPRESS)
      SET(STELMAIN_DEPS ${STELMAIN_DEPS} qtcompress_stel)
 ENDIF()
@@ -760,10 +774,12 @@ SET_TARGET_PROPERTIES(stellarium PROPERTIES FOLDER "src")
 #############################################################################################
 
 IF(ENABLE_TESTING)
+     INCLUDE("${PROJECT_SOURCE_DIR}/cmake/SwissTests.cmake")
      SET(TESTS_LIBRARIES ${ZLIB_LIBRARIES} Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Test stelMain)
 
      # Custom target used to build all tests at once
      ADD_CUSTOM_TARGET(buildTests)
+     ADD_DEPENDENCIES(buildTests buildSwissTests)
      SET_TARGET_PROPERTIES(buildTests PROPERTIES FOLDER "src/tests")
 
      SET(tests_testDates_SRCS

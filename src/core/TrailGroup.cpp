@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2010 Fabien Chereau
@@ -38,7 +39,7 @@ TrailGroup::TrailGroup(float te, int maxPoints) :
 
 Q_GLOBAL_STATIC(QVector<Vec3d>, vertexArray);
 Q_GLOBAL_STATIC(QVector<Vec4f>, colorArray);
-void TrailGroup::draw(StelCore* core, StelPainter* sPainter)
+void TrailGroup::draw(StelCore* core, StelPainter* sPainter, const std::function<bool(const StelObject*)>& visible)
 {
 	sPainter->setBlending(true);
 	float currentTime = static_cast<float>(core->getJDE());
@@ -47,6 +48,7 @@ void TrailGroup::draw(StelCore* core, StelPainter* sPainter)
 	sPainter->setProjector(core->getProjection(transfo));
 	for (const auto& trail : std::as_const(allTrails))
 	{
+		if (visible && !visible(trail.stelObject.data())) continue;
 		Planet* hpl = dynamic_cast<Planet*>(trail.stelObject.data());
 		if (hpl!=Q_NULLPTR)
 		{

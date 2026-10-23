@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2002 Fabien Chereau
@@ -2606,19 +2607,33 @@ QVector<const Planet*> Planet::getCandidatesForShadow() const
 	return res;
 }
 
+void Planet::computeCoordinates(double jde, double* position, double* velocity) const
+{
+	coordFunc(jde, position, velocity, orbitPtr);
+}
+
+void Planet::computeCurrentCoordinates(double jde, double* position, double* velocity)
+{
+	computeCoordinates(jde, position, velocity);
+}
+
 void Planet::computePosition(const StelObserver *observer, const double dateJDE, const Vec3d &aberrationPush)
 {
+	// Capture before calculating: if data change concurrently, keep the old
+	// revision so the next update retries rather than certifying a stale state.
+	const quint64 dataRevision = coordinateDataRevision();
+	const bool dataChanged = positionDataRevision != dataRevision;
 	// Having hundreds of Minor Planets makes this very slow. Especially on transitions between locations (StelCore::moveObserverTo())
 	// it seems acceptable to disable position updates for minor bodies.
 	// TODO: Maybe test for target location and allow updates in this case.
 	bool isTransitioning=false;
 	if (observer)
 		isTransitioning=observer->isTraveling();
-	if (isTransitioning && orbitPtr)
+	if (isTransitioning && orbitPtr && !dataChanged)
 		return;
 
 
-	if (fabs(dateJDE-lastJDE)>deltaJDE)
+	if (dataChanged || fabs(dateJDE-lastJDE)>deltaJDE)
 	{
 		// if Sun, then position is always 0,0,0 because coordFunc is computing barycentric coordinates
 		if (this->getParent() == nullptr)
@@ -2628,9 +2643,10 @@ void Planet::computePosition(const StelObserver *observer, const double dateJDE,
 		}
 		else
 		{
-			coordFunc(dateJDE, &eclipticPos[0], &eclipticVelocity[0], orbitPtr);
+			computeCurrentCoordinates(dateJDE, &eclipticPos[0], &eclipticVelocity[0]);
 		}
 		lastJDE = dateJDE;
+		positionDataRevision = dataRevision;
 	}
 	this->aberrationPush=aberrationPush;
 }
@@ -2644,7 +2660,7 @@ void Planet::computePosition(const double dateJDE, Vec3d &eclPosition, Vec3d &ec
 		eclVelocity.set(0., 0., 0.);
 	}
 	else {
-		coordFunc(dateJDE, &eclPosition[0], &eclVelocity[0], orbitPtr);
+		computeCoordinates(dateJDE, &eclPosition[0], &eclVelocity[0]);
 	}
 }
 
@@ -2885,13 +2901,19 @@ double Planet::getMeanSolarDay() const
 // This is only needed for orbit drawing.
 Vec3d Planet::getEclipticPos(double dateJDE) const
 {
+	const quint64 dataRevision = coordinateDataRevision();
+	if (orbitDataRevision != dataRevision)
+	{
+		orbitPositionsCache.clear();
+		orbitDataRevision = dataRevision;
+	}
 	// for the Sun
 	if (parent == Q_NULLPTR)  // the Sun
 	{
 		return Vec3d(0., 0., 0.);
 	}
 	// Use current position if the time match.
-	if (fuzzyEquals(dateJDE, lastJDE))
+	if (positionDataRevision == dataRevision && fuzzyEquals(dateJDE, lastJDE))
 		return eclipticPos;
 
 	// Otherwise try to use a cached position.
@@ -2900,7 +2922,7 @@ Vec3d Planet::getEclipticPos(double dateJDE) const
 	{
 		pos = new Vec3d;
 		Vec3d velDummy;
-		coordFunc(dateJDE, &(*pos)[0], &velDummy[0], orbitPtr);
+		computeCoordinates(dateJDE, &(*pos)[0], &velDummy[0]);
 		orbitPositionsCache.insert(dateJDE, pos);
 	}
 	return *pos;
@@ -2960,7 +2982,7 @@ Vec3d Planet::getBarycentricEclipticPos(double dateJDE) const
 			{
 				Vec3d eclipticPosSun = Vec3d(0., 0., 0.);
 				Vec3d eclipticVelocitySun = Vec3d(0., 0., 0.);
-				pp->coordFunc(dateJDE, &eclipticPosSun[0], &eclipticVelocitySun[0], orbitPtr);
+				pp->computeCoordinates(dateJDE, &eclipticPosSun[0], &eclipticVelocitySun[0]);
 				pos += eclipticPosSun;
 				break;
 			}
@@ -3023,7 +3045,7 @@ Vec3d Planet::getBarycentricEclipticVelocity(double dateJDE) const
 			{
 				Vec3d eclipticPosSun = Vec3d(0., 0., 0.);
 				Vec3d eclipticVelocitySun = Vec3d(0., 0., 0.);
-				pp->coordFunc(dateJDE, &eclipticPosSun[0], &eclipticVelocitySun[0], orbitPtr);
+				pp->computeCoordinates(dateJDE, &eclipticPosSun[0], &eclipticVelocitySun[0]);
 				vel += eclipticVelocitySun;
 				break;
 			}
@@ -6032,7 +6054,7 @@ void Planet::computeOrbit()
 {
 	double dateJDE = lastJDE;
 	// For open Kepler orbits, compute only the static segment around epoch which was defined by orbit_good!
-	KeplerOrbit *keplerOrbit=static_cast<KeplerOrbit*>(orbitPtr);
+	KeplerOrbit *keplerOrbit=hasIntegratedEphemeris(lastJDE) ? nullptr : static_cast<KeplerOrbit*>(orbitPtr);
 	if (keplerOrbit && !closeOrbit)
 		dateJDE = keplerOrbit->getEpochJDE();
 	Vec3d parentPos;
@@ -6092,7 +6114,7 @@ void Planet::drawOrbit(const StelCore* core)
 	}
 
 	const StelProjectorP prj = core->getProjection(StelCore::FrameHeliocentricEclipticJ2000);
-	KeplerOrbit *keplerOrbit=static_cast<KeplerOrbit*>(orbitPtr);
+	KeplerOrbit *keplerOrbit=hasIntegratedEphemeris(lastJDE) ? nullptr : static_cast<KeplerOrbit*>(orbitPtr);
 	StelPainter sPainter(prj);
 	const float scale = sPainter.getProjector()->getScreenScale();
 
@@ -6221,6 +6243,9 @@ Vec4d Planet::getClosestRTSTime(const StelCore *core, const double altitude) con
 {
 	if (core->getCurrentObserver()->isTraveling()) // transition to elsewhere
 		return Vec4d(0., 0., 0., -1000.);
+
+	SolarSystem::ScopedPositionUpdate positionScope(*GETSTELMODULE(SolarSystem),
+		{this, core->getCurrentPlanet().data()});
 
 	// Keep time in sync (method from line 592) to fix slow down of time when the moon is selected
 	const StelLocation loc=core->getCurrentLocation();
@@ -6554,6 +6579,9 @@ Vec4d Planet::getRTSTime(const StelCore *core, const double altitude) const
 	// During transitions, return invalid results and save lots of time.
 	if (core->getCurrentObserver()->isTraveling())
 		return Vec4d(0., 0., 0., -1000.);
+
+	SolarSystem::ScopedPositionUpdate positionScope(*GETSTELMODULE(SolarSystem),
+		{this, core->getCurrentPlanet().data()});
 
 	// Keep time in sync (method from line 592) to fix slow down of time when the moon is selected
 	const double currentJD = core->getJDOfLastJDUpdate();

@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2023 Alexander Wolf
@@ -32,6 +33,9 @@ public:
 	AstroCalcAlmanacWidget(QWidget* parent = nullptr);
 	void setup();
 	void retranslate();
+
+protected:
+	void showEvent(QShowEvent* event) override;
 
 private slots:
 	void setSeasonLabels();

@@ -1,3 +1,20 @@
+<!-- Modified 2026-10-23: document the experimental Swiss Ephemeris variant. -->
+# Stellarium Swiss Ephemeris
+
+Experimental source-only variant maintained as `AmsesBobo/stellarium-swisseph`,
+with optional Swiss Ephemeris asteroid positions and GUI data management.
+
+- [Build and use this variant](doc/swisseph-prototype.md#build-from-a-fresh-clone)
+- [Separate user profile and upstream updates](doc/swisseph-repository.md)
+- [Licensing and external dependencies](doc/swisseph-licensing.md)
+
+Swiss Ephemeris is disabled by default. Download its pinned source with the
+provided Python helper and explicitly enable it in CMake. Ephemeris files are
+selected separately in the GUI. This repository does not distribute Swiss-enabled
+binaries or downloaded ephemeris data.
+
+The following project badges and release links refer to **upstream Stellarium**.
+
 # Stellarium
 [![GitHub release](https://img.shields.io/github/release/Stellarium/stellarium.svg)](https://github.com/Stellarium/stellarium/releases/latest)
 [![GitHub Release Date](https://img.shields.io/github/release-date/Stellarium/stellarium.svg)](https://github.com/Stellarium/stellarium/releases/latest)
@@ -25,6 +42,10 @@ Please refer to the [User Guide, Getting Started section](https://github.com/Ste
 ## Get & build the code
 
 See instructions to [building Stellarium from source code](BUILDING.md).
+
+This branch includes experimental, optional Swiss Ephemeris asteroid support.
+See the [fresh-clone build instructions](doc/swisseph-prototype.md#build-from-a-fresh-clone).
+The source helper fetches the Swiss library; choose ephemeris data in Stellarium’s GUI after building.
 
 ## Full References and Credits
 

@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Swiss Ephemeris integration, 2026-10-23.
+// Run only with the local Swiss Ephemeris prototype and downloaded files.
+// Frozen expected heliocentric radii from the pinned upstream data, TT epochs.
+core.setTimeRate(0);
+core.setDeltaTAlgorithm("WithoutCorrection");
+SolarSystem.setFlagLightTravelTime(false);
+SolarSystem.setFlagOrbits(true);
+LandscapeMgr.setFlagAtmosphere(false);
+LandscapeMgr.setFlagLandscape(false);
+var cases = [{"jd": 1705425.5, "name": "(1) Ceres", "radius": 2.983035186900786}, {"jd": 1705425.5, "name": "(2) Pallas", "radius": 2.5773970899400522}, {"jd": 1705425.5, "name": "(3) Juno", "radius": 3.2719918866634465}, {"jd": 1705425.5, "name": "(4) Vesta", "radius": 2.2921456024400007}, {"jd": 2295545.5, "name": "(1) Ceres", "radius": 2.8147011303717426}, {"jd": 2295545.5, "name": "(2) Pallas", "radius": 3.3945428693407753}, {"jd": 2295545.5, "name": "(3) Juno", "radius": 2.776427340998012}, {"jd": 2295545.5, "name": "(4) Vesta", "radius": 2.420517366836941}, {"jd": 2451545, "name": "(1) Ceres", "radius": 2.551151723799166}, {"jd": 2451545, "name": "(2) Pallas", "radius": 2.143736692705246}, {"jd": 2451545, "name": "(3) Juno", "radius": 3.11968936248786}, {"jd": 2451545, "name": "(4) Vesta", "radius": 2.16281193621983}];
+var failures=0;
+for(var i=0;i<cases.length;++i) {
+    var c=cases[i];
+    core.setJDay(c.jd);
+    core.selectObjectByName(c.name, true);
+    core.moveToObject(c.name, 0);
+    core.wait(0.2);
+    var info=core.getObjectInfo(c.name);
+    var ok=info["position-source"]==="Swiss Ephemeris"
+        && Math.abs(info["heliocentric-distance"]-c.radius)<1e-8;
+    if(!ok) failures++;
+    core.output("SWISS_INTEGRATION " + JSON.stringify({name:c.name,jd:c.jd,ok:ok,
+        source:info["position-source"],radius:info["heliocentric-distance"],expected:c.radius}));
+}
+// Turn light-time back on and exercise fast forward/backward time movement.
+SolarSystem.setFlagLightTravelTime(true);
+core.setTimeRate(365250);
+core.wait(1);
+core.setTimeRate(-365250);
+core.wait(1);
+core.setTimeRate(0);
+core.setDate("3500-01-01T00:00:00", "utc", true);
+core.wait(0.3);
+if(core.getObjectInfo("(1) Ceres")["position-source"]!=="Kepler elements") failures++;
+core.output("SWISS_INTEGRATION_RESULT failures=" + failures);
+core.quitStellarium();

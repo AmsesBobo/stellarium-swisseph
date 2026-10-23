@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2002 Fabien Chereau
@@ -58,6 +59,7 @@ class SolarSystem : public StelObjectModule, protected QOpenGLFunctions
 	Q_PROPERTY(int trailsThickness			READ getTrailsThickness			WRITE setTrailsThickness		NOTIFY trailsThicknessChanged)
 	// This is a "forwarding property" only, without own variable.
 	Q_PROPERTY(bool flagHints			READ getFlagHints			WRITE setFlagHints			NOTIFY flagHintsChanged)
+	Q_PROPERTY(bool flagHideAsteroidsWithoutEphemeris READ getFlagHideAsteroidsWithoutEphemeris WRITE setFlagHideAsteroidsWithoutEphemeris NOTIFY flagHideAsteroidsWithoutEphemerisChanged)
 	Q_PROPERTY(bool flagMarkers			READ getFlagMarkers			WRITE setFlagMarkers			NOTIFY markersDisplayedChanged)
 	Q_PROPERTY(bool flagPointer			READ getFlagPointer			WRITE setFlagPointer			NOTIFY flagPointerChanged)
 	Q_PROPERTY(bool planetsDisplayed		READ getFlagPlanets			WRITE setFlagPlanets			NOTIFY flagPlanetsDisplayedChanged)
@@ -266,6 +268,12 @@ public slots:
 	void setFlagHints(bool b);
 	//! Get the current value of the flag which determines if planet hints are drawn or hidden along labels
 	bool getFlagHints() const;
+
+	//! Hide minor planets whose stored position falls back to Kepler elements.
+	void setFlagHideAsteroidsWithoutEphemeris(bool enabled);
+	bool getFlagHideAsteroidsWithoutEphemeris() const { return flagHideAsteroidsWithoutEphemeris; }
+	//! Cheap display/picking filter; catalogue lookup and calculations remain available.
+	bool isBodyVisibleWithEphemerisFilter(const Planet* body) const;
 
 	//! Set flag which determines if planet markers are drawn for minor bodies
 	void setFlagMarkers(bool b);
@@ -824,6 +832,7 @@ signals:
 	void labelsDisplayedChanged(bool b);
 	void flagOrbitsChanged(bool b);
 	void flagHintsChanged(bool b);
+	void flagHideAsteroidsWithoutEphemerisChanged(bool enabled);
 	void markersDisplayedChanged(bool b);
 	void flagDrawMoonHaloChanged(bool b);
 	void flagDrawSunHaloChanged(bool b);
@@ -992,6 +1001,28 @@ public:
 
 	//! Get the list of all the bodies of the solar system.	
 	const QList<PlanetP>& getAllPlanets() const {return systemPlanets;}
+
+	//! Restrict synchronous off-date calculations to major bodies and requested
+	//! minor bodies (including ancestors). Normal rendering must never run inside
+	//! this scope: do not process events, change the catalogue or observer here.
+	//! Callers must restore the original date/positions before leaving the scope.
+	//! Nested scopes retain the outer scope's bodies as well as their own targets.
+	class ScopedPositionUpdate
+	{
+	public:
+		ScopedPositionUpdate(SolarSystem& system, const QList<const Planet*>& targets);
+		~ScopedPositionUpdate();
+		ScopedPositionUpdate(const ScopedPositionUpdate&) = delete;
+		ScopedPositionUpdate& operator=(const ScopedPositionUpdate&) = delete;
+		const QList<PlanetP>& bodies() const { return planets; }
+	private:
+		friend class SolarSystem;
+		SolarSystem& system;
+		ScopedPositionUpdate* previous;
+		QList<PlanetP> planets;
+		QVector<QVector<PlanetP>> levels;
+	};
+
 	//! Get the list of all the bodies of the solar system.
 	const QList<PlanetP>& getAllMinorBodies() const {return systemMinorBodies;}
 	//! Get the list of all minor bodies names.
@@ -1257,6 +1288,7 @@ private:
 	bool flagPermanentSolarCorona = true;
 
 	//! List of all the bodies of the solar system.
+	ScopedPositionUpdate* positionUpdateScope = nullptr;
 	QList<PlanetP> systemPlanets;
 	//! List of all the minor bodies of the solar system.
 	QList<PlanetP> systemMinorBodies;
@@ -1279,6 +1311,7 @@ private:
 	StelTextureSP texEphemerisCometMarker;
 	StelTextureSP texEphemerisNowMarker;
 
+	bool flagHideAsteroidsWithoutEphemeris = false;
 	bool flagShow = false;
 	bool flagPointer = false;                   // show red cross selection pointer?
 	bool flagIsolatedTrails = true;

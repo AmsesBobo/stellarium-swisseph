@@ -1,3 +1,4 @@
+# Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
 # CMake 3.20+ is required if x-compiling for Windows on ARM
 MESSAGE(STATUS "Found CMake ${CMAKE_VERSION}")
@@ -133,6 +134,9 @@ INCLUDE(StellariumPlatform)
 MESSAGE(STATUS "Platform: ${CMAKE_SYSTEM} (${CMAKE_SYSTEM_PROCESSOR})")
 
 ########### Main global variables ###########
+OPTION(ENABLE_SWISSEPH "Experimental Swiss Ephemeris asteroid positions (AGPLv3 combined build)" OFF)
+SET(SWISSEPH_SOURCE_DIR "" CACHE PATH "External Swiss Ephemeris C source directory; no automatic download")
+
 SET(ENABLE_TESTING 0 CACHE BOOL "Define whether the unit tests should be activated.")
 SET(ENABLE_LTO 0 CACHE BOOL "Define whether the Link Time Optimization should be activated.")
 SET(ENABLE_PCH 1 CACHE BOOL "Define whether to use precompiled headers.")

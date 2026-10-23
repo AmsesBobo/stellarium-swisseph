@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2010 Fabien Chereau
@@ -20,6 +21,7 @@
 #ifndef TRAILGROUP_HPP
 #define TRAILGROUP_HPP
 
+#include <functional>
 #include "VecMath.hpp"
 #include "StelCore.hpp"
 #include "StelObjectType.hpp"
@@ -31,7 +33,8 @@ class TrailGroup
 public:
 	TrailGroup(float atimeExtent, int maxPoints);
 
-	void draw(StelCore* core, StelPainter*);
+	//! Optional filter hides a trail without discarding its history.
+	void draw(StelCore* core, StelPainter*, const std::function<bool(const StelObject*)>& visible = {});
 
 	// Add 1 point to all the curves at current time and remove too old points
 	void update();
