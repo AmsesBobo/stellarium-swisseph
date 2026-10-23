@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2002 Fabien Chereau (some old code from the Planet class)
@@ -20,6 +21,7 @@
  */
  
 #include "MinorPlanet.hpp"
+#include "SwissEphemeris.hpp"
 #include "Orbit.hpp"
 #include "StelCore.hpp"
 #include "StelLocaleMgr.hpp"
@@ -241,6 +243,21 @@ QString MinorPlanet::getInfoStringExtra(const StelCore *core, const InfoStringGr
 	if (flags&Extra)
 	{
 		oss << Planet::getInfoStringExtra(core, flags);
+		if (SwissEphemeris::isEnabled() && minorPlanetNumber >= 1 && positionSourceKnown)
+		{
+			const auto& state = positionSource;
+			if (positionUsesSwiss)
+			{
+				oss << QString("%1: Swiss Ephemeris (DE%2)<br/>")
+				       .arg(q_("Position source")).arg(state.deNumber);
+				oss << QString("%1: %2 – %3 (TT)<br/>").arg(q_("Asteroid ephemeris interval"))
+				       .arg(StelUtils::julianDayToISO8601String(state.asteroidStartJDE),
+				            StelUtils::julianDayToISO8601String(state.asteroidEndJDE));
+			}
+			else
+				oss << QString("%1: %2<br/>").arg(q_("Position source"),
+				       q_("Kepler elements (Swiss Ephemeris unavailable at the position calculation time)"));
+		}
 		if (!specT.isEmpty())
 			// TRANSLATORS: Tholen spectral taxonomic classification of asteroids
 			oss << QString("%1: %2<br/>").arg(q_("Tholen spectral type"), specT);
@@ -482,4 +499,86 @@ void MinorPlanet::updateEpochOrbit(double jde, bool force)
 	// in a snapshot with slightly different semi-major axis or eccentricity.
 	// Passing 0 causes setSiderealPeriod() to recalculate from the orbit.
 	setSiderealPeriod(0.);
+}
+
+// The Kepler orbit remains available for fallback and approximate orbital elements.
+// Positions always go through this hook, including light-time and AstroCalc calls.
+void MinorPlanet::computeCoordinates(double jde, double* position, double* velocity) const
+{
+	SwissEphemeris::State state;
+	computeCoordinatesWithSource(jde, position, velocity, state);
+}
+
+void MinorPlanet::computeCurrentCoordinates(double jde, double* position, double* velocity)
+{
+	positionSource = SwissEphemeris::State{};
+	positionUsesSwiss = computeCoordinatesWithSource(jde, position, velocity, positionSource);
+	positionSourceKnown = true;
+}
+
+bool MinorPlanet::computeCoordinatesWithSource(double jde, double* position, double* velocity, SwissEphemeris::State& state) const
+{
+	if (!SwissEphemeris::calculateInterpolated(minorPlanetNumber, jde, state))
+	{
+		Planet::computeCoordinates(jde, position, velocity);
+		return false;
+	}
+	const Vec3d p = StelCore::matJ2000ToVsop87 * Vec3d(state.position.data());
+	const Vec3d v = StelCore::matJ2000ToVsop87 * Vec3d(state.velocity.data());
+	for (int i=0; i<3; ++i) { position[i]=p[i]; velocity[i]=v[i]; }
+	return true;
+}
+
+quint64 MinorPlanet::coordinateDataRevision() const
+{
+	return SwissEphemeris::dataRevision();
+}
+
+bool MinorPlanet::hasIntegratedEphemeris(double jde) const
+{
+	SwissEphemeris::State state;
+	return SwissEphemeris::calculateInterpolated(minorPlanetNumber, jde, state);
+}
+
+bool MinorPlanet::hasValidPositionalData(double jde, PositionQuality purpose) const
+{
+	if (!hasIntegratedEphemeris(jde))
+		return Planet::hasValidPositionalData(jde, purpose);
+	if (purpose == Position)
+		return true;
+	// Do not draw an orbit crossing into missing data using unrelated Kepler elements.
+	// Include one extra sample interval for the rounding in Planet::computeOrbit().
+	const double halfSpan = deltaOrbitJDE * (ORBIT_SEGMENTS/2 + 1);
+	return hasIntegratedEphemeris(jde-halfSpan) && hasIntegratedEphemeris(jde+halfSpan);
+}
+
+Vec2d MinorPlanet::getValidPositionalDataRange(PositionQuality purpose) const
+{
+	SwissEphemeris::State state;
+	if (SwissEphemeris::calculateInterpolated(minorPlanetNumber, lastJDE, state))
+	{
+		const double margin = purpose == OrbitPlotting ? deltaOrbitJDE*(ORBIT_SEGMENTS/2+1) : 0.;
+		return Vec2d(state.startJDE+margin, state.endJDE-margin);
+	}
+	return Planet::getValidPositionalDataRange(purpose);
+}
+
+QVariantMap MinorPlanet::getInfoMap(const StelCore* core) const
+{
+	QVariantMap map = Planet::getInfoMap(core);
+	if (!positionSourceKnown) return map;
+	const auto& state = positionSource;
+	map.insert("position-source", positionUsesSwiss ? "Swiss Ephemeris" : "Kepler elements");
+	map.insert("position-source-jde", lastJDE);
+	map.insert("position-source-revision", QVariant::fromValue(positionDataRevision));
+	if (positionUsesSwiss)
+	{
+		map.insert("ephemeris-start-jde", state.startJDE);
+		map.insert("ephemeris-end-jde", state.endJDE);
+		map.insert("ephemeris-de-number", state.deNumber);
+		map.insert("asteroid-ephemeris-start-jde", state.asteroidStartJDE);
+		map.insert("asteroid-ephemeris-end-jde", state.asteroidEndJDE);
+		map.insert("ephemeris-file", QString::fromStdString(state.filePath));
+	}
+	return map;
 }

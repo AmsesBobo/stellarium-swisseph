@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2015-2026 Alexander Wolf
@@ -471,8 +472,6 @@ void AstroCalcDialog::createDialogContent()
 	connect(ui->lunarElongationLimitSpinBox, qOverload<int>(&QSpinBox::valueChanged), this, &AstroCalcDialog::saveLunarElongationLimit);
 	connect(objectMgr, &StelObjectMgr::selectedObjectChanged,         this, &AstroCalcDialog::drawLunarElongationGraph);
 	connect(core, &StelCore::dateChanged,                             this, &AstroCalcDialog::drawLunarElongationGraph);
-
-	connect(this, &AstroCalcDialog::visibleChanged, this, &AstroCalcDialog::handleVisibleEnabled);
 
 	/*
 	wutModel = new QStringListModel(this);
@@ -2068,6 +2067,11 @@ void AstroCalcDialog::generateEphemeris()
 	else
 		celestialObjects.append(solarSystem->searchByEnglishName(currentPlanet));
 
+	QList<const Planet*> positionTargets{cplanet.data()};
+	for (const auto& body : celestialObjects) positionTargets.append(body.data());
+	if (oppositionPlanet) positionTargets.append(oppositionPlanet.data());
+	SolarSystem::ScopedPositionUpdate positionScope(*solarSystem,positionTargets);
+
 	EphemerisList.reserve(static_cast<long>(elements)*n);
 	propMgr->setStelPropertyValue("SolarSystem.ephemerisDataLimit", n);
 
@@ -2156,7 +2160,7 @@ void AstroCalcDialog::generateEphemeris()
 			// Install the correct epoch snapshot BEFORE core->update(0) computes
 			// positions. If this runs after, the first step uses the snapshot from
 			// the simulation's displayed date, causing a jump on the first marker.
-			for (const auto& p : std::as_const(solarSystem->getAllPlanets()))
+			for (const auto& p : positionScope.bodies())
 			{
 				QSharedPointer<MinorPlanet> mp = p.dynamicCast<MinorPlanet>();
 				if (mp && mp->hasEpochElements())
@@ -2225,7 +2229,13 @@ void AstroCalcDialog::generateEphemeris()
 			idxRow++;
 		}		
 	}
-	core->setJD(currentJD); // restore time
+	core->setJD(currentJD); // restore time and the bodies touched by this calculation
+	for (const auto& p : positionScope.bodies())
+	{
+		auto mp=p.dynamicCast<MinorPlanet>();
+		if (mp && mp->hasEpochElements()) mp->updateEpochOrbit(core->getJDE(),true);
+	}
+	core->update(0);
 
 	// adjust the column width
 	for (int i = 0; i < EphemerisCount; ++i)
@@ -6215,6 +6225,7 @@ void AstroCalcDialog::handleVisibleEnabled()
 {
 	if (dialog->isVisible())
 	{
+		calculateWutObjects(); // Refresh deferred date/filter changes when WUT is shown.
 		// check which graph needs refresh (only one is set, if any)
 		if (graphPlotNeedsRefresh)
 		{
@@ -7725,6 +7736,10 @@ void AstroCalcDialog::changePage(QListWidgetItem* current, QListWidgetItem* prev
 		}
 	}
 
+	// WUT data may have changed while another page was visible.
+	if (ui->stackedWidget->currentWidget()==ui->stackedWidgetPage6)
+		calculateWutObjects();
+
 	// special case (PCalc)
 	if (ui->stackListWidget->row(current) == 6)
 	{
@@ -8211,6 +8226,13 @@ void AstroCalcDialog::fillWUTTable(const QString &objectName, const QString &des
 
 void AstroCalcDialog::calculateWutObjects()
 {
+	// Date/filter signals remain connected after AstroCalc has been opened.
+	// A hidden WUT refresh temporarily updates the entire solar system and can
+	// dominate date scrolling with a large asteroid catalogue. Refresh on entry
+	// or reopening instead (changePage/handleVisibleEnabled).
+	if (!dialog || !dialog->isVisible() || ui->stackedWidget->currentWidget()!=ui->stackedWidgetPage6)
+		return;
+
 	if (ui->wutCategoryListWidget->currentItem())
 	{
 		QString categoryName = ui->wutCategoryListWidget->currentItem()->text();

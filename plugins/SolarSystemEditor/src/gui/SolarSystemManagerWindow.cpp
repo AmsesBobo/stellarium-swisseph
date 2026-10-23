@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Solar System editor plug-in for Stellarium
  *
@@ -24,6 +25,8 @@
 #include "ui_solarSystemManagerWindow.h"
 
 #include "MpcImportWindow.hpp"
+#include "SwissEphemerisDownload.hpp"
+#include "SwissEphemeris.hpp"
 #include "ManualImportWindow.hpp"
 
 #include "StelApp.hpp"
@@ -61,6 +64,8 @@ SolarSystemManagerWindow::~SolarSystemManagerWindow()
 void SolarSystemManagerWindow::createDialogContent()
 {
 	ui->setupUi(dialog);
+	if (SwissEphemeris::isEnabled())
+		ui->tabWidget->insertTab(2, new SwissEphemerisDownload(ui->tabWidget), "Swiss Ephemeris");
 
 	// Kinetic scrolling
 	kineticScrollingList << ui->listWidgetObjects;

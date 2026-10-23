@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2010 Bogdan Marinov
@@ -22,6 +23,7 @@
 #define MINORPLANET_HPP
 
 #include "Planet.hpp"
+#include "SwissEphemeris.hpp"
 #include <QVector>
 #include <memory>
 
@@ -144,6 +146,14 @@ public:
 	//! get sidereal period for minor planet
 	double getSiderealPeriod() const override;
 
+	//! Whether the stored, light-time-corrected position uses current Swiss data. No calculation or file I/O.
+	bool currentPositionUsesSwiss() const
+	{ return positionSourceKnown && positionUsesSwiss && positionDataRevision == SwissEphemeris::dataRevision(); }
+
+	bool hasValidPositionalData(double jde, PositionQuality purpose) const override;
+	Vec2d getValidPositionalDataRange(PositionQuality purpose) const override;
+	QVariantMap getInfoMap(const StelCore* core) const override;
+
 	// Multi-epoch elements support (extended ephemeris pack)-
 
 	//! Load a table of orbital element snapshots from the extended ephemeris pack.
@@ -166,6 +176,10 @@ public:
 	void updateEpochOrbit(double jde, bool force = false);
 
 protected:
+	void computeCoordinates(double jde, double* position, double* velocity) const override;
+	void computeCurrentCoordinates(double jde, double* position, double* velocity) override;
+	quint64 coordinateDataRevision() const override;
+	bool hasIntegratedEphemeris(double jde) const override;
 	// components for Planet::getInfoString() that are overridden here:
 	QString getInfoStringName(const StelCore *core, const InfoStringGroup& flags) const override;
 	QString getNarrationName(const StelCore *core, const InfoStringGroup& flags) const override;
@@ -174,6 +188,12 @@ protected:
 	QString getNarrationExtra(const StelCore *core, const InfoStringGroup& flags) const override;
 
 private:
+	bool computeCoordinatesWithSource(double jde, double* position, double* velocity, SwissEphemeris::State& source) const;
+	// Only the stored-position calculation writes these. Info reads must never
+	// probe the current date or overwrite provenance through orbit sampling.
+	bool positionSourceKnown = false;
+	bool positionUsesSwiss = false;
+	SwissEphemeris::State positionSource;
 	int minorPlanetNumber;
 	float  slopeParameter; // This is G from the H, G system for computation of apparent magnitude.
 

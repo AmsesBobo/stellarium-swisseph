@@ -1,3 +1,4 @@
+// Modified 2026-10-23: optional Swiss Ephemeris integration and related performance/display support.
 /*
  * Stellarium
  * Copyright (C) 2002 Fabien Chereau
@@ -299,13 +300,13 @@ public:
 	//! @param purpose signal whether result should be good enough for observation of just for plotting orbit data.
 	//! For observation, date should be within the orbit_good value, or within 1 year from epoch of the orbital elements.
 	//! @note for major planets and moons this method will always return true
-	bool hasValidPositionalData(const double JDE, const PositionQuality purpose) const;
+	virtual bool hasValidPositionalData(const double JDE, const PositionQuality purpose) const;
 	//! Returns JDE dates of presumably valid data for positional calculation or acceptable range for graphics.
 	//! For the major planets and moons, this is always (std::numeric_limits<double>::min(), std::numeric_limits<double>::max())
 	//! For planets with Keplerian orbits, this is [epoch-orbit_good, epoch+orbit_good] or,
 	//! if purpose=Position, [epoch-min(orbit_good, 365), epoch+min(orbit_good, 365)].
 	//! This should help to detect and avoid using outdated orbital elements.
-	Vec2d getValidPositionalDataRange(const PositionQuality purpose) const;
+	virtual Vec2d getValidPositionalDataRange(const PositionQuality purpose) const;
 	float getAxisRotation(void) { return axisRotation;} //! return axisRotation last computed in computeTransMatrix(). [degrees]
 
 	///////////////////////////////////////////////////////////////////////////
@@ -689,6 +690,17 @@ public:
 	void setSurvey(const HipsSurveyP& colors, const HipsSurveyP& normals, const HipsSurveyP& horizons);
 
 protected:
+	//! Geometric parent-centric state in the internal VSOP87 frame (AU, AU/day).
+	//! Used by rendering, orbit sampling and off-date ephemeris calculations alike.
+	virtual void computeCoordinates(double jde, double* position, double* velocity) const;
+	//! Calculate stored current state; subclasses may retain its provenance here.
+	//! Off-date queries and orbit samples use the const hook above instead.
+	virtual void computeCurrentCoordinates(double jde, double* position, double* velocity);
+	//! Version of the data behind computeCoordinates(). Zero for immutable sources.
+	//! External data changes invalidate both current state and cached orbit samples.
+	virtual quint64 coordinateDataRevision() const { return 0; }
+	virtual bool hasIntegratedEphemeris(double jde) const { Q_UNUSED(jde) return false; }
+
 	// These components for getInfoString() can be overridden in subclasses
 	virtual QString getInfoStringName(const StelCore *core, const InfoStringGroup& flags) const;
 	virtual QString getNarrationName(const StelCore *core, const InfoStringGroup& flags) const;
@@ -863,6 +875,8 @@ protected:
 	double distance;                 //!< Temporary variable used to store the distance to a given point
 					 //!< it is used for sorting while drawing
 	double sphereScale;              //!< Artificial scaling for better viewing.
+	quint64 positionDataRevision = 0;
+	mutable quint64 orbitDataRevision = 0;
 	double lastJDE;                  //!< caches JDE of last positional computation
 
 	posFuncType coordFunc;           //!< callback for the calculation of the equatorial rectangular heliocentric position at time JDE.
